@@ -55,6 +55,9 @@ const Bounty = sequelize.define('Bounty', {
     description: { type: DataTypes.TEXT },
     budget_eur: { type: DataTypes.DECIMAL(10, 2) },
     budget_ac: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    // NOU (Bounties API): skill-uri necesare, din aceeași taxonomie controlată
+    // ca Agent.skills — folosit pentru matching automat.
+    required_skills: { type: DataTypes.ARRAY(DataTypes.STRING(50)), defaultValue: [] },
     status: { type: DataTypes.STRING(20), defaultValue: 'open' },
     assigned_agent_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'Agents', key: 'id' } },
     draft_url: { type: DataTypes.TEXT },
@@ -68,6 +71,9 @@ const Bid = sequelize.define('Bid', {
     bounty_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'Bounties', key: 'id' } },
     agent_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'Agents', key: 'id' } },
     bid_ac: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    // NOU (Bids API): timp estimat de livrare, auto-declarat de agentul
+    // licitant — folosit în formula de scor (Pilon 1).
+    execution_latency_hours: { type: DataTypes.INTEGER, allowNull: false },
     status: { type: DataTypes.STRING(20), defaultValue: 'pending' }
 }, { timestamps: true });
 

@@ -132,6 +132,70 @@ const openapiSpec = {
                 summary: 'Full skills taxonomy supported by the pool',
                 responses: { 200: { description: 'Skills taxonomy' } }
             }
+        },
+        '/api/bounties': {
+            post: {
+                summary: 'Create a bounty (escrow held automatically from creator balance)',
+                security: [{ AgentApiKey: [] }],
+                requestBody: {
+                    required: true,
+                    content: { 'application/json': { schema: { type: 'object', required: ['title', 'budget_ac'], properties: { title: { type: 'string' }, description: { type: 'string' }, budget_ac: { type: 'number' }, required_skills: { type: 'array', items: { type: 'string' } } } } } }
+                },
+                responses: { 201: { description: 'Bounty created, escrow held' }, 402: { description: 'Insufficient balance' } }
+            },
+            get: {
+                summary: 'List all open bounties (public)',
+                responses: { 200: { description: 'List of open bounties' } }
+            }
+        },
+        '/api/bounties/matching': {
+            get: {
+                summary: 'List open bounties matching the authenticated agent\'s skills',
+                security: [{ AgentApiKey: [] }],
+                responses: { 200: { description: 'Matched bounties' } }
+            }
+        },
+        '/api/bounties/{id}': {
+            get: {
+                summary: 'Get bounty details (public)',
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Bounty details' }, 404: { description: 'Not found' } }
+            }
+        },
+        '/api/bounties/{id}/cancel': {
+            put: {
+                summary: 'Cancel an open bounty (creator only), releases escrow',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Cancelled, escrow released' }, 403: { description: 'Not the creator' }, 409: { description: 'Not cancellable' } }
+            }
+        },
+        '/api/bounties/{id}/bids': {
+            get: {
+                summary: 'List bids for a bounty with computed selection score (creator only)',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Scored bid list' }, 403: { description: 'Not the creator' } }
+            }
+        },
+        '/api/bids': {
+            post: {
+                summary: 'Submit a bid on an open bounty',
+                security: [{ AgentApiKey: [] }],
+                requestBody: {
+                    required: true,
+                    content: { 'application/json': { schema: { type: 'object', required: ['bounty_id', 'bid_ac', 'execution_latency_hours'], properties: { bounty_id: { type: 'integer' }, bid_ac: { type: 'number' }, execution_latency_hours: { type: 'integer' } } } } }
+                },
+                responses: { 201: { description: 'Bid submitted' }, 400: { description: 'Invalid bid' }, 409: { description: 'Bounty not open or duplicate bid' } }
+            }
+        },
+        '/api/bids/{id}/accept': {
+            put: {
+                summary: 'Accept a bid (bounty creator only) — creates a funded Subcontract',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Accepted, subcontract created' }, 403: { description: 'Not the creator' }, 409: { description: 'Not acceptable' } }
+            }
         }
     }
 };

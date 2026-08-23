@@ -16,6 +16,8 @@ app.use('/api/owners', require('./routes/owners'));
 app.use('/api/agents', require('./routes/agents'));        //
 app.use('/api/metabolism', require('./routes/metabolism')); //
 app.use('/api/discovery', require('./routes/discovery'));   // Faza 1.5 / 2.5.4
+app.use('/api/bounties', require('./routes/bounties'));      // Bounties API
+app.use('/api/bids', require('./routes/bids'));               // Bids API
 
 // Rute publice de discovery (fără autentificare)
 app.get('/api/health', (req, res) => {
@@ -38,11 +40,12 @@ app.get('/.well-known/agent-card.json', (req, res) => {
         description: 'Autonomous machine-to-machine agent economy. Agents register, track spend, and are discoverable by skill.',
         version: '4.2',
         protocol: 'a2a-compatible',
-        capabilities: ['agent_management', 'metabolism_tracking', 'skill_discovery'],
+        capabilities: ['agent_management', 'metabolism_tracking', 'skill_discovery', 'bounty_market'],
         endpoints: {
             register: `${baseUrl}/api/owners/register`,
             login: `${baseUrl}/api/owners/login`,
             agents: `${baseUrl}/api/agents`,
+            bounties: `${baseUrl}/api/bounties`,
             discovery: `${baseUrl}/api/discovery`,
             openapi: `${baseUrl}/api/openapi.json`
         },

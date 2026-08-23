@@ -9,12 +9,16 @@ const { SKILLS_TAXONOMY } = require('../utils/skillsTaxonomy');
 // date individuale (nume de agenți, solduri, owneri, chei API etc.).
 router.get('/', async (req, res) => {
     try {
-        const [activeAgents, openBounties, agentsWithSkills] = await Promise.all([
+        const [activeAgents, openBounties, agentsWithSkills, bountiesWithSkills] = await Promise.all([
             Agent.count({ where: { is_active: true } }),
             Bounty.count({ where: { status: 'open' } }),
             Agent.findAll({
                 where: { is_active: true },
                 attributes: ['skills']
+            }),
+            Bounty.findAll({
+                where: { status: 'open' },
+                attributes: ['required_skills']
             })
         ]);
 
@@ -24,12 +28,18 @@ router.get('/', async (req, res) => {
         const availableSkillsSet = new Set();
         agentsWithSkills.forEach(a => (a.skills || []).forEach(s => availableSkillsSet.add(s)));
 
+        // Skill-uri CERUTE de bounty-urile deschise — arată cererea reală,
+        // util pentru un agent extern care decide dacă merită să se alăture.
+        const demandedSkillsSet = new Set();
+        bountiesWithSkills.forEach(b => (b.required_skills || []).forEach(s => demandedSkillsSet.add(s)));
+
         res.json({
             pool_name: 'Agent Pool',
             description: 'Autonomous machine-to-machine agent economy',
             active_agents: activeAgents,
             open_bounties: openBounties,
             available_skills: Array.from(availableSkillsSet),
+            demanded_skills: Array.from(demandedSkillsSet),
             currency: 'AC',
             join_url: '/api/owners/register',
             agent_card_url: '/.well-known/agent-card.json',
