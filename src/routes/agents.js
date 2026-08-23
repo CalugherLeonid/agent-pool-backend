@@ -1,0 +1,198 @@
+const express = require('express');
+const router = express.Router();
+const { Agent, Owner } = require('../models');
+const { authenticateOwner, authenticateAgent } = require('../middleware/auth');
+const { generateApiKey, hashApiKey } = require('../utils/apiKey');
+const { SKILLS_TAXONOMY, isValidSkill } = require('../utils/skillsTaxonomy');
+
+// ============================================
+// RUTE PROTEJATE PENTRU OWNER (JWT)
+// ============================================
+
+// POST /api/agents – Creează un agent nou
+router.post('/', authenticateOwner, async (req, res) => {
+    try {
+        const { agent_name, daily_budget_ac } = req.body;
+        const ownerId = req.owner.id;
+
+        if (!agent_name) {
+            return res.status(400).json({ error: 'agent_name is required' });
+        }
+
+        // Faza 1.5 / 2.5.1: generăm cheia în clar doar pentru acest răspuns.
+        // În DB se scrie DOAR hash-ul (api_key_hash). Coloana veche api_key
+        // rămâne null pentru agenți noi (deprecată, ștearsă într-o migrare ulterioară).
+        const plainApiKey = generateApiKey();
+        const apiKeyHash = hashApiKey(plainApiKey);
+
+        const agent = await Agent.create({
+            owner_id: ownerId,
+            agent_name,
+            api_key_hash: apiKeyHash,
+            daily_budget_ac: daily_budget_ac || 50,
+            balance_ac: 0,
+            is_active: true,
+            kill_switch: false,
+            reputation_score: 50,
+            win_rate: 0,
+            success_rate: 0
+        });
+
+        res.status(201).json({
+            id: agent.id,
+            agent_name: agent.agent_name,
+            api_key: plainApiKey, // ⚠️ singura dată când cheia e vizibilă în clar — salvează-o acum
+            balance_ac: agent.balance_ac,
+            daily_budget_ac: agent.daily_budget_ac,
+            is_active: agent.is_active,
+            kill_switch: agent.kill_switch,
+            reputation_score: agent.reputation_score
+        });
+    } catch (err) {
+        console.error('Create agent error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/agents – Lista agenților ownerului
+router.get('/', authenticateOwner, async (req, res) => {
+    try {
+        // Faza 1.5 / 2.5.1: api_key/api_key_hash NU se expun niciodată în GET normal.
+        const agents = await Agent.findAll({
+            where: { owner_id: req.owner.id },
+            attributes: ['id', 'agent_name', 'balance_ac', 'daily_budget_ac', 'is_active', 'kill_switch', 'reputation_score', 'win_rate', 'success_rate', 'skills']
+        });
+        res.json(agents);
+    } catch (err) {
+        console.error('List agents error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PUT /api/agents/:id/kill – Activează kill-switch
+router.put('/:id/kill', authenticateOwner, async (req, res) => {
+    try {
+        const agent = await Agent.findOne({
+            where: { id: req.params.id, owner_id: req.owner.id }
+        });
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found or not owned by you' });
+        }
+        agent.kill_switch = true;
+        agent.is_active = false;
+        await agent.save();
+        res.json({ message: 'Kill-switch activated', agent_id: agent.id });
+    } catch (err) {
+        console.error('Kill-switch error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PUT /api/agents/:id/activate – Reactivează agentul
+router.put('/:id/activate', authenticateOwner, async (req, res) => {
+    try {
+        const agent = await Agent.findOne({
+            where: { id: req.params.id, owner_id: req.owner.id }
+        });
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found or not owned by you' });
+        }
+        agent.kill_switch = false;
+        agent.is_active = true;
+        await agent.save();
+        res.json({ message: 'Agent activated', agent_id: agent.id });
+    } catch (err) {
+        console.error('Activate agent error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/agents/:id/skills – Setează skill-urile agentului (2.5.3)
+// Doar valori din taxonomia controlată (utils/skillsTaxonomy.js) sunt acceptate.
+router.patch('/:id/skills', authenticateOwner, async (req, res) => {
+    try {
+        const { skills } = req.body;
+
+        if (!Array.isArray(skills)) {
+            return res.status(400).json({ error: 'skills must be an array of strings' });
+        }
+
+        const invalid = skills.filter(s => !isValidSkill(s));
+        if (invalid.length > 0) {
+            return res.status(400).json({
+                error: 'One or more skills are not part of the taxonomy',
+                invalid_skills: invalid,
+                allowed_skills: SKILLS_TAXONOMY
+            });
+        }
+
+        const agent = await Agent.findOne({
+            where: { id: req.params.id, owner_id: req.owner.id }
+        });
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found or not owned by you' });
+        }
+
+        // elimină duplicate, păstrează ordinea din taxonomie
+        agent.skills = [...new Set(skills)];
+        await agent.save();
+
+        res.json({ agent_id: agent.id, skills: agent.skills });
+    } catch (err) {
+        console.error('Update skills error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/agents/:id/rotate-key – Regenerează cheia API (2.5.1)
+// Cheia veche devine invalidă imediat. Noua cheie e vizibilă o singură dată, în acest răspuns.
+router.post('/:id/rotate-key', authenticateOwner, async (req, res) => {
+    try {
+        const agent = await Agent.findOne({
+            where: { id: req.params.id, owner_id: req.owner.id }
+        });
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found or not owned by you' });
+        }
+
+        const plainApiKey = generateApiKey();
+        agent.api_key_hash = hashApiKey(plainApiKey);
+        agent.api_key = null; // curăță și eventuala cheie veche în clar, dacă exista
+        await agent.save();
+
+        res.json({
+            message: 'API key rotated. The old key is now invalid.',
+            agent_id: agent.id,
+            api_key: plainApiKey // ⚠️ singura dată când cheia e vizibilă în clar
+        });
+    } catch (err) {
+        console.error('Rotate key error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================
+// RUTE PROTEJATE PENTRU AGENT (API KEY)
+// ============================================
+
+// GET /api/agents/balance – Soldul agentului
+router.get('/balance', authenticateAgent, async (req, res) => {
+    try {
+        const agent = req.agent;
+        res.json({
+            agent_id: agent.id,
+            agent_name: agent.agent_name,
+            balance_ac: agent.balance_ac,
+            daily_budget_ac: agent.daily_budget_ac,
+            daily_spent: 0, // va fi calculat de metabolism
+            is_active: agent.is_active,
+            kill_switch: agent.kill_switch,
+            reputation_score: agent.reputation_score
+        });
+    } catch (err) {
+        console.error('Balance error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+module.exports = router;
