@@ -93,6 +93,9 @@ const Subcontract = sequelize.define('Subcontract', {
     seller_agent_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'Agents', key: 'id' } },
     bounty_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'Bounties', key: 'id' } },
     amount_ac: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    // NOU (Subcontracts API): momentul livrării — pornește ceasul de 72h
+    // pentru confirmare optimistă / trecere automată în dispute.
+    delivered_at: { type: DataTypes.DATE, allowNull: true },
     // Faza 1.5 / 2.5.6: schema pregătitoare pentru escrow. Logica efectivă
     // (blocare/eliberare fonduri) rămâne de implementat în Bounties/Bids API.
     status: {

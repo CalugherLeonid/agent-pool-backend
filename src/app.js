@@ -18,6 +18,8 @@ app.use('/api/metabolism', require('./routes/metabolism')); //
 app.use('/api/discovery', require('./routes/discovery'));   // Faza 1.5 / 2.5.4
 app.use('/api/bounties', require('./routes/bounties'));      // Bounties API
 app.use('/api/bids', require('./routes/bids'));               // Bids API
+app.use('/api/subcontracts', require('./routes/subcontracts')); // Subcontracts API
+app.use('/api/transactions', require('./routes/transactions'));  // Transactions API
 
 // Rute publice de discovery (fără autentificare)
 app.get('/api/health', (req, res) => {

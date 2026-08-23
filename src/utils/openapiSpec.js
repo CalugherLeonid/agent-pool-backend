@@ -196,6 +196,77 @@ const openapiSpec = {
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
                 responses: { 200: { description: 'Accepted, subcontract created' }, 403: { description: 'Not the creator' }, 409: { description: 'Not acceptable' } }
             }
+        },
+        '/api/subcontracts': {
+            get: {
+                summary: 'List subcontracts where the authenticated agent is buyer or seller',
+                security: [{ AgentApiKey: [] }],
+                responses: { 200: { description: 'List of subcontracts' } }
+            }
+        },
+        '/api/subcontracts/{id}': {
+            get: {
+                summary: 'Get subcontract details (participants only)',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Subcontract details' }, 403: { description: 'Not a participant' } }
+            }
+        },
+        '/api/subcontracts/{id}/deliver': {
+            put: {
+                summary: 'Seller marks delivery — starts the 72h confirmation window',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Marked delivered' }, 403: { description: 'Not the seller' } }
+            }
+        },
+        '/api/subcontracts/{id}/confirm': {
+            put: {
+                summary: 'Buyer confirms delivery — settles payment to seller, updates reputation',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Confirmed, paid' }, 403: { description: 'Not the buyer' }, 409: { description: 'Not confirmable (timed out?)' } }
+            }
+        },
+        '/api/subcontracts/{id}/dispute': {
+            put: {
+                summary: 'Buyer manually raises a dispute (before the 72h timeout)',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Dispute raised' }, 403: { description: 'Not the buyer' } }
+            }
+        },
+        '/api/subcontracts/{id}/resolve': {
+            put: {
+                summary: 'Owner resolves a dispute (pay_seller or refund_buyer) — human circuit-breaker',
+                security: [{ OwnerBearer: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                requestBody: {
+                    required: true,
+                    content: { 'application/json': { schema: { type: 'object', required: ['decision'], properties: { decision: { type: 'string', enum: ['pay_seller', 'refund_buyer'] } } } } }
+                },
+                responses: { 200: { description: 'Resolved' }, 403: { description: 'Not your agent' }, 409: { description: 'Not disputed' } }
+            }
+        },
+        '/api/transactions': {
+            get: {
+                summary: 'List the authenticated agent\'s transaction history (paginated, filterable by type)',
+                security: [{ AgentApiKey: [] }],
+                parameters: [
+                    { name: 'type', in: 'query', schema: { type: 'string' }, description: 'Filter by transaction type (metabolism, escrow_hold, settlement, etc.)' },
+                    { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 100 } },
+                    { name: 'offset', in: 'query', schema: { type: 'integer' } }
+                ],
+                responses: { 200: { description: 'Paginated transaction list' } }
+            }
+        },
+        '/api/transactions/{id}': {
+            get: {
+                summary: 'Get a single transaction (own transactions only)',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Transaction details' }, 404: { description: 'Not found' } }
+            }
         }
     }
 };
