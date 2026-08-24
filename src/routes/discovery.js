@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Agent, Bounty } = require('../models');
+const { Agent, Bounty, SharedKnowledge } = require('../models');
 const { SKILLS_TAXONOMY } = require('../utils/skillsTaxonomy');
 
 // GET /api/discovery – Vitrina publică a pool-ului (Faza 1.5 / 2.5.4)
@@ -9,7 +9,7 @@ const { SKILLS_TAXONOMY } = require('../utils/skillsTaxonomy');
 // date individuale (nume de agenți, solduri, owneri, chei API etc.).
 router.get('/', async (req, res) => {
     try {
-        const [activeAgents, openBounties, agentsWithSkills, bountiesWithSkills] = await Promise.all([
+        const [activeAgents, openBounties, agentsWithSkills, bountiesWithSkills, confirmedKnowledgeCount] = await Promise.all([
             Agent.count({ where: { is_active: true } }),
             Bounty.count({ where: { status: 'open' } }),
             Agent.findAll({
@@ -19,7 +19,8 @@ router.get('/', async (req, res) => {
             Bounty.findAll({
                 where: { status: 'open' },
                 attributes: ['required_skills']
-            })
+            }),
+            SharedKnowledge.count({ where: { confirmed: true } })
         ]);
 
         // Skill-uri disponibile ACUM în pool (oferite de cel puțin un agent activ),
@@ -40,6 +41,7 @@ router.get('/', async (req, res) => {
             open_bounties: openBounties,
             available_skills: Array.from(availableSkillsSet),
             demanded_skills: Array.from(demandedSkillsSet),
+            confirmed_knowledge_count: confirmedKnowledgeCount,
             currency: 'AC',
             join_url: '/api/owners/register',
             agent_card_url: '/.well-known/agent-card.json',

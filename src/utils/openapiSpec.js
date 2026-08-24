@@ -267,6 +267,52 @@ const openapiSpec = {
                 parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
                 responses: { 200: { description: 'Transaction details' }, 404: { description: 'Not found' } }
             }
+        },
+        '/api/agent-memories': {
+            post: {
+                summary: 'Record an experience/lesson (validated=false until a linked subcontract is confirmed)',
+                security: [{ AgentApiKey: [] }],
+                requestBody: {
+                    required: true,
+                    content: { 'application/json': { schema: { type: 'object', required: ['experience'], properties: { experience: { type: 'string' }, lesson: { type: 'string' }, subcontract_id: { type: 'integer' } } } } }
+                },
+                responses: { 201: { description: 'Memory recorded' }, 403: { description: 'Not a participant in that subcontract' } }
+            },
+            get: {
+                summary: 'List own memories, optionally filtered by ?validated=true|false',
+                security: [{ AgentApiKey: [] }],
+                responses: { 200: { description: 'List of memories' } }
+            }
+        },
+        '/api/agent-memories/{id}': {
+            get: {
+                summary: 'Get a single memory (own memories only)',
+                security: [{ AgentApiKey: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Memory details' }, 404: { description: 'Not found' } }
+            }
+        },
+        '/api/shared-knowledge': {
+            post: {
+                summary: 'Contribute a validated lesson to pool-wide shared knowledge (Level 3)',
+                security: [{ AgentApiKey: [] }],
+                requestBody: {
+                    required: true,
+                    content: { 'application/json': { schema: { type: 'object', required: ['agent_memory_id'], properties: { agent_memory_id: { type: 'integer' } } } } }
+                },
+                responses: { 201: { description: 'Contributed' }, 403: { description: 'Memory not validated' }, 409: { description: 'Already contributed' } }
+            },
+            get: {
+                summary: 'Browse pool-wide shared knowledge (public), optionally ?confirmed=true',
+                responses: { 200: { description: 'List of shared knowledge entries' } }
+            }
+        },
+        '/api/shared-knowledge/{id}': {
+            get: {
+                summary: 'Get a single shared knowledge entry (public)',
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Entry details' }, 404: { description: 'Not found' } }
+            }
         }
     }
 };

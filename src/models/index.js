@@ -110,6 +110,11 @@ const Subcontract = sequelize.define('Subcontract', {
 const AgentMemory = sequelize.define('AgentMemory', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     agent_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'Agents', key: 'id' } },
+    // NOU (AgentMemory API): legătură opțională la subcontractul care a
+    // generat experiența — necesară pentru validare AUTOMATĂ (nu manuală):
+    // o lecție devine 'validated' doar când subcontractul asociat ajunge
+    // efectiv la 'confirmed' — dovadă reală, nu auto-declarație a agentului.
+    subcontract_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'Subcontracts', key: 'id' } },
     experience: { type: DataTypes.TEXT, allowNull: false },
     lesson: { type: DataTypes.TEXT },
     validated: { type: DataTypes.BOOLEAN, defaultValue: false }
@@ -119,6 +124,10 @@ const SharedKnowledge = sequelize.define('SharedKnowledge', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     lesson: { type: DataTypes.TEXT, allowNull: false },
     validation_count: { type: DataTypes.INTEGER, defaultValue: 1 },
+    // NOU (SharedKnowledge API): agenții distincți care au contribuit —
+    // previne ca UN singur agent să umfle artificial validation_count
+    // contribuind repetat cu aceeași lecție. Doar diversitate reală contează.
+    contributor_agent_ids: { type: DataTypes.ARRAY(DataTypes.INTEGER), defaultValue: [] },
     confirmed: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, { timestamps: true });
 
@@ -146,6 +155,9 @@ Subcontract.belongsTo(Bounty, { foreignKey: 'bounty_id' });
 
 Agent.hasMany(AgentMemory, { foreignKey: 'agent_id' });
 AgentMemory.belongsTo(Agent, { foreignKey: 'agent_id' });
+
+Subcontract.hasMany(AgentMemory, { foreignKey: 'subcontract_id' });
+AgentMemory.belongsTo(Subcontract, { foreignKey: 'subcontract_id' });
 
 // ---------- Sincronizare automată (doar pentru dezvoltare) ----------
 // Rulează o singură dată pentru a crea tabelele. După primul start, poți comenta acest bloc.

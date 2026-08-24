@@ -20,6 +20,8 @@ app.use('/api/bounties', require('./routes/bounties'));      // Bounties API
 app.use('/api/bids', require('./routes/bids'));               // Bids API
 app.use('/api/subcontracts', require('./routes/subcontracts')); // Subcontracts API
 app.use('/api/transactions', require('./routes/transactions'));  // Transactions API
+app.use('/api/agent-memories', require('./routes/agentMemories')); // AgentMemory API
+app.use('/api/shared-knowledge', require('./routes/sharedKnowledge')); // SharedKnowledge API
 
 // Rute publice de discovery (fără autentificare)
 app.get('/api/health', (req, res) => {

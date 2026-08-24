@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Subcontract, Agent, Bounty, Transaction, sequelize } = require('../models');
+const { Subcontract, Agent, Bounty, Transaction, AgentMemory, sequelize } = require('../models');
 const { authenticateAgent, authenticateOwner } = require('../middleware/auth');
 const { isTimedOut } = require('../utils/subcontractTimeout');
 const { updateSellerSuccessRate } = require('../utils/reputation');
@@ -142,6 +142,13 @@ router.put('/:id/confirm', authenticateAgent, async (req, res) => {
         subcontract.status = 'confirmed';
         await subcontract.save({ transaction: t });
 
+        // AgentMemory API: dovadă reală de succes — orice lecție legată
+        // de acest subcontract devine validată automat, nu la cerere.
+        await AgentMemory.update(
+            { validated: true },
+            { where: { subcontract_id: subcontract.id }, transaction: t }
+        );
+
         const bounty = await Bounty.findByPk(subcontract.bounty_id, { transaction: t });
         if (bounty) {
             bounty.status = 'completed';
@@ -263,6 +270,16 @@ router.put('/:id/resolve', authenticateOwner, async (req, res) => {
 
         subcontract.status = 'resolved';
         await subcontract.save({ transaction: t });
+
+        // AgentMemory API: dacă disputa s-a rezolvat în favoarea seller-ului
+        // (livrarea a fost, până la urmă, reală și bună), lecțiile legate
+        // de acest subcontract se validează la fel ca la o confirmare directă.
+        if (decision === 'pay_seller') {
+            await AgentMemory.update(
+                { validated: true },
+                { where: { subcontract_id: subcontract.id }, transaction: t }
+            );
+        }
 
         const bounty = await Bounty.findByPk(subcontract.bounty_id, { transaction: t });
         if (bounty) {
