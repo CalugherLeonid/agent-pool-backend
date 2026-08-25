@@ -12,7 +12,12 @@ const app = express();
 initKeys();
 
 // Middleware
-app.use(cors());
+// CORS restricționat la origini cunoscute (din .env) — nu wildcard.
+// În development, dacă ALLOWED_ORIGINS nu e setat, acceptă orice (localhost).
+const corsOptions = process.env.ALLOWED_ORIGINS
+    ? { origin: process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) }
+    : {};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Rute

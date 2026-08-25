@@ -58,7 +58,13 @@ const Bounty = sequelize.define('Bounty', {
     // NOU (Bounties API): skill-uri necesare, din aceeași taxonomie controlată
     // ca Agent.skills — folosit pentru matching automat.
     required_skills: { type: DataTypes.ARRAY(DataTypes.STRING(50)), defaultValue: [] },
-    status: { type: DataTypes.STRING(20), defaultValue: 'open' },
+    status: {
+        type: DataTypes.STRING(20),
+        defaultValue: 'open',
+        validate: {
+            isIn: [['open', 'assigned', 'completed', 'cancelled']]
+        }
+    },
     assigned_agent_id: { type: DataTypes.INTEGER, allowNull: true, references: { model: 'Agents', key: 'id' } },
     draft_url: { type: DataTypes.TEXT },
     human_review_status: { type: DataTypes.STRING(20), defaultValue: 'pending' },

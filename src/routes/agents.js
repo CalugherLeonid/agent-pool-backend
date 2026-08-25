@@ -187,11 +187,12 @@ router.get('/:id/passport', authenticateAgent, async (req, res) => {
             where: { seller_agent_id: req.agent.id, status: 'confirmed' }
         });
 
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
         const issuedAt = new Date().toISOString();
         const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
         const payload = {
-            agent_pool: 'https://agentpool.ai',
+            agent_pool: baseUrl,
             agent_id: req.agent.id,
             agent_name: req.agent.agent_name,
             skills: req.agent.skills || [],
