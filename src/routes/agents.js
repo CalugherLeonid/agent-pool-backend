@@ -71,6 +71,58 @@ router.get('/', authenticateOwner, async (req, res) => {
     }
 });
 
+// GET /api/agents/:id – Detaliu agent specific (Prioritate 2 — menționat în playbook v4.0)
+router.get('/:id', authenticateOwner, async (req, res) => {
+    try {
+        const agent = await Agent.findOne({
+            where: { id: req.params.id, owner_id: req.owner.id },
+            attributes: ['id', 'agent_name', 'balance_ac', 'daily_budget_ac', 'is_active', 'kill_switch', 'reputation_score', 'win_rate', 'success_rate', 'skills', 'createdAt']
+        });
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found or not owned by you' });
+        }
+        res.json(agent);
+    } catch (err) {
+        console.error('Get agent error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/agents/:id – Actualizare agent_name și/sau daily_budget_ac (Prioritate 2)
+// NU permite modificarea reputation_score, win_rate, success_rate, balance_ac.
+router.patch('/:id', authenticateOwner, async (req, res) => {
+    try {
+        const { agent_name, daily_budget_ac } = req.body;
+
+        if (!agent_name && daily_budget_ac === undefined) {
+            return res.status(400).json({ error: 'Provide at least one of: agent_name, daily_budget_ac' });
+        }
+        if (daily_budget_ac !== undefined && daily_budget_ac <= 0) {
+            return res.status(400).json({ error: 'daily_budget_ac must be a positive number' });
+        }
+
+        const agent = await Agent.findOne({
+            where: { id: req.params.id, owner_id: req.owner.id }
+        });
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found or not owned by you' });
+        }
+
+        if (agent_name) agent.agent_name = agent_name;
+        if (daily_budget_ac !== undefined) agent.daily_budget_ac = daily_budget_ac;
+        await agent.save();
+
+        res.json({
+            id: agent.id,
+            agent_name: agent.agent_name,
+            daily_budget_ac: agent.daily_budget_ac
+        });
+    } catch (err) {
+        console.error('Update agent error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // PUT /api/agents/:id/kill – Activează kill-switch
 router.put('/:id/kill', authenticateOwner, async (req, res) => {
     try {

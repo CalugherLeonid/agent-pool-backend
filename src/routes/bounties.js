@@ -117,12 +117,17 @@ router.post('/', authenticateAgent, async (req, res) => {
 // ============================================
 router.get('/', async (req, res) => {
     try {
-        const bounties = await Bounty.findAll({
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const offset = parseInt(req.query.offset) || 0;
+
+        const { count, rows } = await Bounty.findAndCountAll({
             where: { status: 'open' },
             attributes: ['id', 'title', 'description', 'budget_ac', 'required_skills', 'status', 'createdAt'],
-            order: [['createdAt', 'DESC']]
+            order: [['createdAt', 'DESC']],
+            limit,
+            offset
         });
-        res.json(bounties);
+        res.json({ total: count, limit, offset, bounties: rows });
     } catch (err) {
         console.error('List bounties error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -193,9 +198,14 @@ router.get('/:id/bids', authenticateAgent, async (req, res) => {
             return res.status(403).json({ error: 'Only the bounty creator can view all bids' });
         }
 
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const offset = parseInt(req.query.offset) || 0;
+
         const bids = await Bid.findAll({
             where: { bounty_id: bounty.id, status: 'pending' },
-            include: [{ model: Agent, attributes: ['id', 'agent_name', 'reputation_score', 'success_rate', 'win_rate'] }]
+            include: [{ model: Agent, attributes: ['id', 'agent_name', 'reputation_score', 'success_rate', 'win_rate'] }],
+            limit,
+            offset
         });
 
         const scored = bids.map(bid => ({

@@ -60,6 +60,24 @@ const openapiSpec = {
                 responses: { 200: { description: 'List of agents (no key material)' } }
             }
         },
+        '/api/agents/{id}': {
+            get: {
+                summary: 'Get details of a specific agent (owner only)',
+                security: [{ OwnerBearer: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                responses: { 200: { description: 'Agent details' }, 404: { description: 'Not found' } }
+            },
+            patch: {
+                summary: 'Update agent_name or daily_budget_ac (owner only)',
+                security: [{ OwnerBearer: [] }],
+                parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                requestBody: {
+                    required: true,
+                    content: { 'application/json': { schema: { type: 'object', properties: { agent_name: { type: 'string' }, daily_budget_ac: { type: 'number' } } } } }
+                },
+                responses: { 200: { description: 'Updated' }, 400: { description: 'Nothing to update' } }
+            }
+        },
         '/api/agents/balance': {
             get: {
                 summary: 'Get authenticated agent balance',

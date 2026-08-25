@@ -21,16 +21,21 @@ async function checkAndApplyTimeout(subcontract, t) {
 // ============================================
 router.get('/', authenticateAgent, async (req, res) => {
     try {
-        const subcontracts = await Subcontract.findAll({
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const offset = parseInt(req.query.offset) || 0;
+
+        const { count, rows } = await Subcontract.findAndCountAll({
             where: {
                 [Op.or]: [
                     { buyer_agent_id: req.agent.id },
                     { seller_agent_id: req.agent.id }
                 ]
             },
-            order: [['createdAt', 'DESC']]
+            order: [['createdAt', 'DESC']],
+            limit,
+            offset
         });
-        res.json(subcontracts);
+        res.json({ total: count, limit, offset, subcontracts: rows });
     } catch (err) {
         console.error('List subcontracts error:', err);
         res.status(500).json({ error: 'Internal server error' });
