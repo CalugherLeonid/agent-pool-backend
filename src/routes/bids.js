@@ -5,6 +5,7 @@ const { authenticateAgent } = require('../middleware/auth');
 const { computeScore, EPSILON } = require('../utils/bidScore');
 const { isSameOwner, isPairSaturated } = require('../utils/washTrading');
 const { isEstablished, NEW_AGENT_MAX_BID_AC } = require('../utils/onboarding');
+const { updateWinRate } = require('../utils/reputation');
 
 // ============================================
 // POST /api/bids – Licitează pe un bounty deschis
@@ -168,10 +169,31 @@ router.put('/:id/accept', authenticateAgent, async (req, res) => {
         bid.status = 'accepted';
         await bid.save({ transaction: t });
 
+        // win_rate: actualizat pentru câștigător și toți perdanții
+        // Câștigătorul: bid-ul curent e deja 'accepted' → contorizat corect
+        const winnerAgent = await Agent.findByPk(bid.agent_id, { transaction: t, lock: t.LOCK.UPDATE });
+        await updateWinRate(winnerAgent, Bid, t);
+        await winnerAgent.save({ transaction: t });
+
+        // Perdanții: toți bid-urile pe acest bounty, exclus câștigătorul
+        const losingBids = await Bid.findAll({
+            where: { bounty_id: bounty.id, id: { [require('sequelize').Op.ne]: bid.id } },
+            transaction: t
+        });
+
+        // update status rejected (trebuie înainte de updateWinRate, ca să fie contorizat)
         await Bid.update(
             { status: 'rejected' },
             { where: { bounty_id: bounty.id, id: { [require('sequelize').Op.ne]: bid.id } }, transaction: t }
         );
+
+        // win_rate pentru fiecare perdant distinct
+        const loserAgentIds = [...new Set(losingBids.map(b => b.agent_id))];
+        for (const loserId of loserAgentIds) {
+            const loserAgent = await Agent.findByPk(loserId, { transaction: t, lock: t.LOCK.UPDATE });
+            await updateWinRate(loserAgent, Bid, t);
+            await loserAgent.save({ transaction: t });
+        }
 
         bounty.status = 'assigned';
         bounty.assigned_agent_id = bid.agent_id;
@@ -194,7 +216,8 @@ router.put('/:id/accept', authenticateAgent, async (req, res) => {
             subcontract_id: subcontract.id,
             winning_agent_id: bid.agent_id,
             amount_ac: winningBid,
-            escrow_refunded_to_creator: leftover
+            escrow_refunded_to_creator: leftover,
+            winner_new_win_rate: winnerAgent.win_rate
         });
     } catch (err) {
         await t.rollback();

@@ -1,4 +1,5 @@
-const { Op, Subcontract, Agent } = require('../models');
+const { Op } = require('sequelize');
+const { Subcontract, Agent } = require('../models');
 
 // Faza restante: Anti-Wash-Trading
 //

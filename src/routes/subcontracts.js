@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const { Subcontract, Agent, Bounty, Transaction, AgentMemory, sequelize } = require('../models');
 const { authenticateAgent, authenticateOwner } = require('../middleware/auth');
 const { isTimedOut } = require('../utils/subcontractTimeout');
-const { updateSellerSuccessRate } = require('../utils/reputation');
+const { updateSellerReputation } = require('../utils/reputation');
 
 // Verifică timeout-ul de 72h și trece automat 'delivered' -> 'disputed'
 // dacă a expirat. Rulează "leneș", la fiecare acces, nu printr-un cron job.
@@ -127,7 +127,7 @@ router.put('/:id/confirm', authenticateAgent, async (req, res) => {
 
         const amount = parseFloat(subcontract.amount_ac);
         seller.balance_ac = parseFloat(seller.balance_ac) + amount;
-        await updateSellerSuccessRate(seller, true, Subcontract, Op, t);
+        await updateSellerReputation(seller, true, Subcontract, Op, t);
         await seller.save({ transaction: t });
 
         await Transaction.create({
@@ -164,7 +164,8 @@ router.put('/:id/confirm', authenticateAgent, async (req, res) => {
             paid_to_agent_id: seller.id,
             amount_ac: amount,
             seller_new_balance: seller.balance_ac,
-            seller_new_success_rate: seller.success_rate
+            seller_new_success_rate: seller.success_rate,
+            seller_new_reputation_score: seller.reputation_score
         });
     } catch (err) {
         await t.rollback();
@@ -241,7 +242,7 @@ router.put('/:id/resolve', authenticateOwner, async (req, res) => {
 
         if (decision === 'pay_seller') {
             seller.balance_ac = parseFloat(seller.balance_ac) + amount;
-            await updateSellerSuccessRate(seller, true, Subcontract, Op, t);
+            await updateSellerReputation(seller, true, Subcontract, Op, t);
             await seller.save({ transaction: t });
 
             await Transaction.create({
@@ -254,7 +255,7 @@ router.put('/:id/resolve', authenticateOwner, async (req, res) => {
             }, { transaction: t });
         } else {
             buyer.balance_ac = parseFloat(buyer.balance_ac) + amount;
-            await updateSellerSuccessRate(seller, false, Subcontract, Op, t);
+            await updateSellerReputation(seller, false, Subcontract, Op, t);
             await buyer.save({ transaction: t });
             await seller.save({ transaction: t });
 
