@@ -4,6 +4,8 @@ const { Agent, Owner } = require('../models');
 const { authenticateOwner, authenticateAgent } = require('../middleware/auth');
 const { generateApiKey, hashApiKey } = require('../utils/apiKey');
 const { SKILLS_TAXONOMY, isValidSkill } = require('../utils/skillsTaxonomy');
+const { signPassport } = require('../utils/passport');
+const { Subcontract } = require('../models');
 
 // ============================================
 // RUTE PROTEJATE PENTRU OWNER (JWT)
@@ -167,6 +169,46 @@ router.post('/:id/rotate-key', authenticateOwner, async (req, res) => {
         });
     } catch (err) {
         console.error('Rotate key error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/agents/:id/passport – Pașaport digital semnat (reputație portabilă)
+// Doar agentul însuși poate cere propriul pașaport (x-api-key).
+// Verificarea de către terți: oricine cu cheia publică de la
+// /api/discovery/public-key poate verifica independent, fără acces la DB.
+router.get('/:id/passport', authenticateAgent, async (req, res) => {
+    try {
+        if (req.agent.id !== parseInt(req.params.id)) {
+            return res.status(403).json({ error: 'You can only request your own passport' });
+        }
+
+        const confirmedCount = await Subcontract.count({
+            where: { seller_agent_id: req.agent.id, status: 'confirmed' }
+        });
+
+        const issuedAt = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+        const payload = {
+            agent_pool: 'https://agentpool.ai',
+            agent_id: req.agent.id,
+            agent_name: req.agent.agent_name,
+            skills: req.agent.skills || [],
+            metrics: {
+                reputation_score: parseFloat(req.agent.reputation_score),
+                success_rate: parseFloat(req.agent.success_rate),
+                win_rate: parseFloat(req.agent.win_rate),
+                confirmed_deliveries: confirmedCount
+            },
+            issued_at: issuedAt,
+            expires_at: expiresAt
+        };
+
+        const passport = signPassport(payload);
+        res.json(passport);
+    } catch (err) {
+        console.error('Passport error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

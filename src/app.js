@@ -4,8 +4,12 @@ const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const { sequelize } = require('./models');
 const openapiSpec = require('./utils/openapiSpec');
+const { initKeys, getPublicKeyPem } = require('./utils/passport');
 
 const app = express();
+
+// Inițializare chei de semnare la startup (Ed25519)
+initKeys();
 
 // Middleware
 app.use(cors());
@@ -15,6 +19,11 @@ app.use(express.json());
 app.use('/api/owners', require('./routes/owners'));
 app.use('/api/agents', require('./routes/agents'));        //
 app.use('/api/metabolism', require('./routes/metabolism')); //
+// Faza restante: cheie publică Ed25519 pentru verificarea independentă a pașapoartelor
+app.get('/api/discovery/public-key', (req, res) => {
+    res.type('text/plain').send(getPublicKeyPem());
+});
+
 app.use('/api/discovery', require('./routes/discovery'));   // Faza 1.5 / 2.5.4
 app.use('/api/bounties', require('./routes/bounties'));      // Bounties API
 app.use('/api/bids', require('./routes/bids'));               // Bids API

@@ -3,6 +3,8 @@ const router = express.Router();
 const { Bid, Bounty, Agent, Transaction, Subcontract, sequelize } = require('../models');
 const { authenticateAgent } = require('../middleware/auth');
 const { computeScore, EPSILON } = require('../utils/bidScore');
+const { isSameOwner, isPairSaturated } = require('../utils/washTrading');
+const { isEstablished, NEW_AGENT_MAX_BID_AC } = require('../utils/onboarding');
 
 // ============================================
 // POST /api/bids – Licitează pe un bounty deschis
@@ -32,12 +34,36 @@ router.post('/', authenticateAgent, async (req, res) => {
             return res.status(403).json({ error: 'Cannot bid on your own bounty' });
         }
 
+        // Anti-wash-trading strat 1: același owner controlează ambii agenți
+        const sameOwner = await isSameOwner(req.agent.id, bounty.creator_agent_id);
+        if (sameOwner) {
+            return res.status(403).json({
+                error: 'Anti-wash-trading: cannot bid on bounties created by agents you own'
+            });
+        }
+
+        // Anti-wash-trading strat 2: pereche buyer-seller deja saturată în 30 zile
+        const saturated = await isPairSaturated(bounty.creator_agent_id, req.agent.id);
+        if (saturated) {
+            return res.status(403).json({
+                error: 'Anti-wash-trading: this buyer-seller pair has reached the transaction limit for this period'
+            });
+        }
+
         const budget = parseFloat(bounty.budget_ac);
+
+        // Birth bond: plafon de licitare pentru agenți noi/nedovediți
+        const established = await isEstablished(req.agent.id);
+        if (!established && bid_ac > NEW_AGENT_MAX_BID_AC) {
+            return res.status(403).json({
+                error: `New agents (under 5 confirmed deliveries) cannot bid over ${NEW_AGENT_MAX_BID_AC} AC`,
+                max_bid_ac: NEW_AGENT_MAX_BID_AC
+            });
+        }
+
         if (bid_ac > budget) {
             return res.status(400).json({ error: 'bid_ac cannot exceed the bounty budget_ac', budget_ac: budget });
         }
-        // Prag minim de preț — previne licitații aproape-zero care ar
-        // sparge motorul de scor (vezi utils/bidScore.js)
         if (bid_ac / budget < EPSILON) {
             return res.status(400).json({
                 error: `bid_ac too low — minimum allowed is ${(EPSILON * 100)}% of budget_ac`,
