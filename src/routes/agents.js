@@ -1,14 +1,162 @@
 const express = require('express');
 const router = express.Router();
-const { Agent, Owner } = require('../models');
+const { Agent, Owner, Subcontract, AgentChallenge, sequelize } = require('../models');
+const { Op } = require('sequelize');
 const { authenticateOwner, authenticateAgent } = require('../middleware/auth');
 const { generateApiKey, hashApiKey } = require('../utils/apiKey');
 const { SKILLS_TAXONOMY, isValidSkill } = require('../utils/skillsTaxonomy');
 const { signPassport } = require('../utils/passport');
-const { Subcontract } = require('../models');
+const crypto = require('crypto');
 
 // ============================================
-// RUTE PROTEJATE PENTRU OWNER (JWT)
+// BRING YOUR AGENT — Handshake Ed25519
+// ============================================
+
+// GET /api/agents/challenge — emite un nonce one-time, expiră în 5 minute.
+router.get('/challenge', async (req, res) => {
+    try {
+        const nonce = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        await AgentChallenge.create({ nonce, expires_at: expiresAt });
+        res.json({ challenge: nonce, expires_in: 300 });
+    } catch (err) {
+        console.error('Challenge error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/agents/external-register — verifică semnătura Ed25519, creează/re-autentifică agentul extern.
+router.post('/external-register', async (req, res) => {
+    const { public_key, signed_challenge, agent_name } = req.body;
+
+    if (!public_key || !signed_challenge) {
+        return res.status(400).json({ error: 'public_key and signed_challenge are required' });
+    }
+    if (!/^[0-9a-f]{64}$/.test(public_key)) {
+        return res.status(400).json({ error: 'public_key must be a 64-char hex Ed25519 public key' });
+    }
+
+    const t = await sequelize.transaction();
+    try {
+        const challenge = await AgentChallenge.findOne({
+            where: { used_at: null, expires_at: { [Op.gt]: new Date() } },
+            order: [['createdAt', 'DESC']],
+            transaction: t,
+            lock: t.LOCK.UPDATE
+        });
+
+        if (!challenge) {
+            await t.rollback();
+            return res.status(401).json({ error: 'No valid challenge found. Request a new one via GET /api/agents/challenge' });
+        }
+
+        // Verifică semnătura Ed25519 — public key raw (32 bytes) în format hex
+        let signatureValid = false;
+        try {
+            const pubKeyDer = Buffer.concat([
+                Buffer.from('302a300506032b6570032100', 'hex'), // ASN.1 prefix Ed25519 SPKI
+                Buffer.from(public_key, 'hex')
+            ]);
+            const pubKeyObj = crypto.createPublicKey({ key: pubKeyDer, format: 'der', type: 'spki' });
+            signatureValid = crypto.verify(
+                null,
+                Buffer.from(challenge.nonce),
+                pubKeyObj,
+                Buffer.from(signed_challenge, 'base64')
+            );
+        } catch (e) {
+            signatureValid = false;
+        }
+
+        if (!signatureValid) {
+            await t.rollback();
+            return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        // Marchează challenge-ul ca folosit — previne replay attacks
+        challenge.used_at = new Date();
+        await challenge.save({ transaction: t });
+
+        // Agent existent? → re-autentificare cu cheie nouă
+        let agent = await Agent.findOne({ where: { external_public_key: public_key }, transaction: t });
+
+        if (!agent) {
+            const plainApiKey = generateApiKey();
+            agent = await Agent.create({
+                owner_id: 1, // owner sistem — de rafinat în producție
+                agent_name: agent_name || `external_${public_key.slice(0, 8)}`,
+                api_key_hash: hashApiKey(plainApiKey),
+                external_public_key: public_key,
+                balance_ac: 0,
+                daily_budget_ac: 50,
+                is_active: true,
+                kill_switch: false,
+                reputation_score: 0,
+                win_rate: 0,
+                success_rate: 0,
+                skills: []
+            }, { transaction: t });
+
+            await t.commit();
+
+            return res.status(201).json({
+                pool_id: agent.id,
+                agent_name: agent.agent_name,
+                api_key: plainApiKey, // ⚠️ singura dată în clar
+                is_new: true,
+                message: 'External agent registered. Save api_key — it will not be shown again.'
+            });
+        }
+
+        // Re-autentificare — rotește cheia
+        const plainApiKey = generateApiKey();
+        agent.api_key_hash = hashApiKey(plainApiKey);
+        await agent.save({ transaction: t });
+        await t.commit();
+
+        res.json({
+            pool_id: agent.id,
+            agent_name: agent.agent_name,
+            api_key: plainApiKey,
+            is_new: false,
+            message: 'External agent re-authenticated. New api_key issued.'
+        });
+    } catch (err) {
+        await t.rollback();
+        console.error('External register error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================
+// RUTE PROTEJATE PENTRU AGENT (API KEY)
+// ============================================
+
+// IMPORTANT: rutele cu nume fix (/balance, /challenge) trebuie definite
+// ÎNAINTE de rutele cu parametri (/:id) — altfel Express le prinde ca /:id.
+
+// GET /api/agents/balance – Soldul agentului
+router.get('/balance', authenticateAgent, async (req, res) => {
+    try {
+        const agent = req.agent;
+        res.json({
+            agent_id: agent.id,
+            agent_name: agent.agent_name,
+            balance_ac: agent.balance_ac,
+            daily_budget_ac: agent.daily_budget_ac,
+            daily_spent: 0,
+            is_active: agent.is_active,
+            kill_switch: agent.kill_switch,
+            reputation_score: agent.reputation_score
+        });
+    } catch (err) {
+        console.error('Balance error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============================================
+// RUTE PROTEJATE PENTRU OWNER (JWT) — cu /:id
 // ============================================
 
 // POST /api/agents – Creează un agent nou
@@ -271,23 +419,4 @@ router.get('/:id/passport', authenticateAgent, async (req, res) => {
 // ============================================
 
 // GET /api/agents/balance – Soldul agentului
-router.get('/balance', authenticateAgent, async (req, res) => {
-    try {
-        const agent = req.agent;
-        res.json({
-            agent_id: agent.id,
-            agent_name: agent.agent_name,
-            balance_ac: agent.balance_ac,
-            daily_budget_ac: agent.daily_budget_ac,
-            daily_spent: 0, // va fi calculat de metabolism
-            is_active: agent.is_active,
-            kill_switch: agent.kill_switch,
-            reputation_score: agent.reputation_score
-        });
-    } catch (err) {
-        console.error('Balance error:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
 module.exports = router;

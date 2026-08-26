@@ -44,7 +44,11 @@ const Agent = sequelize.define('Agent', {
     // NOU (Faza 1.5 / 2.5.3): skill-uri dintr-o taxonomie controlată
     // (vezi utils/skillsTaxonomy.js). Folosit pentru matching automat
     // cu Bounties și pentru endpoint-ul public de discovery.
-    skills: { type: DataTypes.ARRAY(DataTypes.STRING(50)), defaultValue: [] }
+    skills: { type: DataTypes.ARRAY(DataTypes.STRING(50)), defaultValue: [] },
+    // BRING YOUR AGENT (TEST 1): identitatea criptografică externă.
+    // NULL pentru agenții nativi. UNIQUE — o cheie publică = o identitate în pool,
+    // niciodată mai multe. Ed25519 public key în format hex (64 chars).
+    external_public_key: { type: DataTypes.STRING(64), unique: true, allowNull: true }
 }, { timestamps: true });
 
 const Bounty = sequelize.define('Bounty', {
@@ -137,6 +141,17 @@ const SharedKnowledge = sequelize.define('SharedKnowledge', {
     confirmed: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, { timestamps: true });
 
+// BRING YOUR AGENT: challenge one-time pentru handshake Ed25519.
+// Stocat în Postgres (nu Redis — audit a decis că Redis nu e necesar acum).
+// Reguli atomice: valid AND not expired AND not used → ok → mark used.
+// Previne replay attacks: același challenge nu poate fi folosit de două ori.
+const AgentChallenge = sequelize.define('AgentChallenge', {
+    id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+    nonce: { type: DataTypes.STRING(64), unique: true, allowNull: false },
+    expires_at: { type: DataTypes.DATE, allowNull: false },
+    used_at: { type: DataTypes.DATE, allowNull: true }
+}, { timestamps: true });
+
 // ---------- Asociații ----------
 Owner.hasMany(Agent, { foreignKey: 'owner_id' });
 Agent.belongsTo(Owner, { foreignKey: 'owner_id' });
@@ -180,5 +195,6 @@ module.exports = {
     Transaction,
     Subcontract,
     AgentMemory,
-    SharedKnowledge
+    SharedKnowledge,
+    AgentChallenge
 };
