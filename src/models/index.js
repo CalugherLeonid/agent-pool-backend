@@ -180,11 +180,28 @@ AgentMemory.belongsTo(Agent, { foreignKey: 'agent_id' });
 Subcontract.hasMany(AgentMemory, { foreignKey: 'subcontract_id' });
 AgentMemory.belongsTo(Subcontract, { foreignKey: 'subcontract_id' });
 
-// ---------- Sincronizare automată (doar pentru dezvoltare) ----------
-// Rulează o singură dată pentru a crea tabelele. După primul start, poți comenta acest bloc.
-sequelize.sync({ alter: true })
-    .then(() => console.log('✅ Tabelele au fost create/sincronizate'))
-    .catch(err => console.error('❌ Sync error:', err));
+// ---------- Sincronizare automată (DOAR pentru dezvoltare) ----------
+// În producție: sequelize.sync() este DEZACTIVAT.
+// Schema e gestionată exclusiv prin migrări Sequelize CLI:
+//   npx sequelize-cli db:migrate
+//
+// De ce: sequelize.sync({ alter: true }) poate corupe date în producție
+// (șterge coloane, modifică tipuri fără avertisment).
+// Migrările CLI sunt explicite, controlate, reversibile (db:migrate:undo).
+
+if (process.env.NODE_ENV !== 'production') {
+    sequelize.sync({ alter: true })
+        .then(() => console.log('✅ Tabelele au fost create/sincronizate'))
+        .catch(err => console.error('❌ Sync error:', err));
+} else {
+    // În producție, doar verifică conexiunea — schema e gestionată de CLI
+    sequelize.authenticate()
+        .then(() => console.log('✅ PostgreSQL connected (production mode — migrations manage schema)'))
+        .catch(err => {
+            console.error('❌ Database connection error:', err);
+            process.exit(1);
+        });
+}
 
 module.exports = {
     sequelize,
