@@ -7,6 +7,7 @@ const openapiSpec = require('./utils/openapiSpec');
 const { initKeys, getPublicKeyPem } = require('./utils/passport');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Inițializare chei de semnare la startup (Ed25519)
 initKeys();
