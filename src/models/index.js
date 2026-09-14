@@ -27,12 +27,8 @@ const Agent = sequelize.define('Agent', {
     id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
     owner_id: { type: DataTypes.INTEGER, allowNull: false, references: { model: 'Owners', key: 'id' } },
     agent_name: { type: DataTypes.STRING(100), allowNull: false },
-    // DEPRECAT (Faza 1.5 / 2.5.1): cheia în clar nu mai este scrisă pentru agenți noi.
-    // Rămâne allowNull: true doar pentru compatibilitate cu rânduri vechi până la
-    // finalizarea migrării (pasul 2: ștergerea coloanei, făcută manual, controlat).
-    api_key: { type: DataTypes.STRING(255), unique: true, allowNull: true },
-    // NOU (Faza 1.5 / 2.5.1): hash SHA-256+pepper al cheii API. Singura valoare
-    // folosită pentru autentificare de acum înainte. Indexat unic pentru lookup rapid.
+    // api_key (text clar) — eliminat prin migrarea 20260826000001-drop-api-key-plain.js
+    // Folosim exclusiv api_key_hash (SHA-256 + pepper) pentru autentificare.
     api_key_hash: { type: DataTypes.STRING(64), unique: true, allowNull: true },
     balance_ac: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     daily_budget_ac: { type: DataTypes.DECIMAL(10, 2), defaultValue: 50 },
