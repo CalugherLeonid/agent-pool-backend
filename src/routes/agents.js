@@ -377,14 +377,42 @@ router.post('/:id/rotate-key', authenticateOwner, async (req, res) => {
 // Doar agentul însuși poate cere propriul pașaport (x-api-key).
 // Verificarea de către terți: oricine cu cheia publică de la
 // /api/discovery/public-key poate verifica independent, fără acces la DB.
+// PATCH: Înlocuiește blocul GET /:id/passport existent cu acesta.
+// Adaugă verified_tasks cu hash-uri SHA-256 pentru fiecare task confirmat.
+// Hash-ul e verificabil independent: SHA-256(subcontract_id:bounty_id:amount_ac:confirmed_at)
+
 router.get('/:id/passport', authenticateAgent, async (req, res) => {
     try {
-        if (req.agent.id !== parseInt(req.params.id)) {
+        if (parseInt(req.params.id) !== req.agent.id) {
             return res.status(403).json({ error: 'You can only request your own passport' });
         }
 
-        const confirmedCount = await Subcontract.count({
-            where: { seller_agent_id: req.agent.id, status: 'confirmed' }
+        const agent = req.agent;
+
+        // Obține subcontractele confirmate pentru verified_tasks
+        const confirmedSubs = await Subcontract.findAll({
+            where: {
+                seller_agent_id: agent.id,
+                status: 'confirmed'
+            },
+            attributes: ['id', 'bounty_id', 'amount_ac', 'updatedAt'],
+            order: [['updatedAt', 'DESC']],
+            limit: 20
+        });
+
+        // Hash pentru fiecare task confirmat — dovadă criptografică tamper-evident
+        // Format: SHA-256(subcontract_id:bounty_id:amount_ac:confirmed_at_ISO)
+        // Oricine poate recalcula hash-ul cu datele publice ale subcontractului
+        const verified_tasks = confirmedSubs.map(sub => {
+            const taskData = `${sub.id}:${sub.bounty_id}:${sub.amount_ac}:${sub.updatedAt.toISOString()}`;
+            const hash = crypto.createHash('sha256').update(taskData).digest('hex');
+            return {
+                subcontract_id: sub.id,
+                bounty_id: sub.bounty_id,
+                amount_ac: parseFloat(sub.amount_ac),
+                confirmed_at: sub.updatedAt.toISOString(),
+                hash: hash
+            };
         });
 
         const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -393,26 +421,29 @@ router.get('/:id/passport', authenticateAgent, async (req, res) => {
 
         const payload = {
             agent_pool: baseUrl,
-            agent_id: req.agent.id,
-            agent_name: req.agent.agent_name,
-            skills: req.agent.skills || [],
+            agent_id: agent.id,
+            agent_name: agent.agent_name,
+            skills: agent.skills || [],
             metrics: {
-                reputation_score: parseFloat(req.agent.reputation_score),
-                success_rate: parseFloat(req.agent.success_rate),
-                win_rate: parseFloat(req.agent.win_rate),
-                confirmed_deliveries: confirmedCount
+                reputation_score: parseFloat(agent.reputation_score),
+                success_rate: parseFloat(agent.success_rate),
+                win_rate: parseFloat(agent.win_rate),
+                confirmed_deliveries: confirmedSubs.length
             },
+            verified_tasks: verified_tasks,
             issued_at: issuedAt,
             expires_at: expiresAt
         };
 
         const passport = signPassport(payload);
         res.json(passport);
+
     } catch (err) {
         console.error('Passport error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 // ============================================
 // RUTE PROTEJATE PENTRU AGENT (API KEY)
