@@ -169,6 +169,64 @@ router.get('/matching', authenticateAgent, async (req, res) => {
     }
 });
 
+// GET /api/bounties/feed.json — machine-readable bounties feed cu cursor pagination
+// IMPORTANT: definită înainte de /:id, altfel Express ar trata "feed.json" ca id.
+// Agenții autonomi polează acest endpoint pentru oportunități noi.
+// ?cursor=0&limit=20&skills=data-analysis,research
+router.get('/feed.json', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+        const cursor = parseInt(req.query.cursor) || 0;
+        const skills = req.query.skills ? req.query.skills.split(',').map(s => s.trim()) : null;
+
+        const where = { status: 'open', id: { [Op.gt]: cursor } };
+        if (skills && skills.length > 0) {
+            where.required_skills = { [Op.overlap]: skills };
+        }
+
+        const bounties = await Bounty.findAll({
+            where,
+            attributes: ['id', 'title', 'description', 'budget_ac', 'required_skills', 'status', 'createdAt'],
+            order: [['id', 'ASC']],
+            limit
+        });
+
+        const nextCursor = bounties.length > 0 ? bounties[bounties.length - 1].id : cursor;
+        const baseUrl = process.env.BASE_URL || 'https://agent-pool-backend-production.up.railway.app';
+
+        res.json({
+            schema: 'agent-pool-bounties-feed-v1',
+            pool: baseUrl,
+            generated_at: new Date().toISOString(),
+            cursor: nextCursor,
+            has_more: bounties.length === limit,
+            next_url: `${baseUrl}/api/bounties/feed.json?cursor=${nextCursor}&limit=${limit}`,
+            count: bounties.length,
+            bounties: bounties.map(b => ({
+                id: b.id,
+                title: b.title,
+                description: b.description,
+                budget_ac: parseFloat(b.budget_ac),
+                required_skills: b.required_skills,
+                status: b.status,
+                created_at: b.createdAt,
+                bid_url: `${baseUrl}/api/bids`,
+                detail_url: `${baseUrl}/api/bounties/${b.id}`
+            })),
+            how_to_bid: {
+                step1: 'GET /api/agents/challenge',
+                step2: 'Sign challenge with your Ed25519 private key',
+                step3: 'POST /api/agents/external-register',
+                step4: 'POST /api/bids with {bounty_id, bid_ac, execution_latency_hours}',
+                sdk: 'pip install "agentpool[crypto] @ git+https://github.com/CalugherLeonid/agentpool-sdk.git"'
+            }
+        });
+    } catch (err) {
+        console.error('Feed error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // GET /api/bounties/:id – Detaliu public
 router.get('/:id', async (req, res) => {
     try {
