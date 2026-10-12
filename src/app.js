@@ -37,6 +37,11 @@ app.use('/api/subcontracts', require('./routes/subcontracts')); // Subcontracts 
 app.use('/api/transactions', require('./routes/transactions'));  // Transactions API
 app.use('/api/agent-memories', require('./routes/agentMemories')); // AgentMemory API
 app.use('/api/shared-knowledge', require('./routes/sharedKnowledge')); // SharedKnowledge API
+app.use('/api/rewards', require('./routes/rewards'));           // Rewards & Badges API
+app.use('/api/leaderboard', require('./routes/rewards'));       // Leaderboard (rewards router)
+app.use('/api/stats', require('./routes/rewards'));             // Ecosystem stats (rewards router)
+app.use('/api/did', require('./routes/agents'));                // DID W3C Documents
+app.use('/api/admin', require('./routes/admin'));               // Admin: treasury, seed-bounties
 
 // Rute publice de discovery (fără autentificare)
 app.get('/api/health', (req, res) => {
